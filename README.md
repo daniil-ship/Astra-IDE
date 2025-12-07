@@ -6,41 +6,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Astra IDE — Полный Гайд</title>
-<style>
-body {
-    font-family: 'Segoe UI', Roboto, Arial, sans-serif;
-    background: linear-gradient(135deg,#0f172a 0%,#0b1220 100%);
-    color: #e6eef8;
-    margin: 0;
-    padding: 0 250px 0 20px;
-}
-h1,h2,h3 { color:#fff; margin:8px 0 }
-pre { background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; overflow:auto; color:#dff0ff; }
-code { font-family: Consolas, monospace; color:#a7f0ff; }
-a { color:#93d6ff; text-decoration:none; }
-ul { margin-top:6px; }
-.card { background: rgba(255,255,255,0.04); border-radius:12px; padding:18px; margin-bottom:14px; box-shadow: 0 6px 18px rgba(2,6,23,0.6); backdrop-filter: blur(6px);}
-nav { position: fixed; right: 0; top: 80px; width: 230px; padding:10px; }
-nav .card { position: sticky; top: 10px; max-height: 80vh; overflow:auto; }
-.small { font-size:13px; color:#cfe9ff }
-.example { border-left:4px solid rgba(147,214,255,0.15); padding-left:10px; }
-.button-download {
-    display: inline-block;
-    margin: 10px 0;
-    padding: 12px 22px;
-    font-size: 16px;
-    font-weight: bold;
-    color: #0b1220;
-    background: #93d6ff;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    text-decoration: none;
-}
-.button-download:hover {
-    background: #72b8e0;
-}
-</style>
 </head>
 <body>
 
