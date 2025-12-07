@@ -513,7 +513,6 @@ class AstraIDE:
         app_name = settings["name"]
         app_version = settings["version"]
 
-        # 1 — создаём exe через PyInstaller
         exe_cmd = [
             "pyinstaller",
             "--windowed",
@@ -523,7 +522,6 @@ class AstraIDE:
         ]
         subprocess.run(exe_cmd)
 
-        # 2 — создаём файл конфигурации для NSIS/Pynsist
         cfg = f"""
 [Application]
 name={app_name}
@@ -542,7 +540,6 @@ files=dist/{app_name}
         with open("installer.cfg", "w", encoding="utf-8") as f:
             f.write(cfg)
 
-        # 3 — запускаем сборку MSI
         msi_cmd = ["pynsist", "installer.cfg"]
         subprocess.run(msi_cmd)
 
@@ -998,12 +995,10 @@ files=dist/{app_name}
         </html>
         """
 
-        # используем tkhtmlview.HTMLLabel если доступен; иначе показываем в Text
         try:
             html_label = HTMLLabel(guide_win, html=html_content)
             html_label.pack(expand=True, fill="both")
         except Exception as e:
-            # fallback: plain Text widget
             txt = scrolledtext.ScrolledText(guide_win)
             txt.insert(tk.END, html_content)
             txt.configure(state=tk.DISABLED)
@@ -1016,4 +1011,5 @@ files=dist/{app_name}
 if __name__=="__main__":
     ide = AstraIDE()
     ide.run()
+
 
