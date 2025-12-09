@@ -197,10 +197,6 @@ TEXT main,20,120,"Скрытый текст",12,"black",None,false</code></pre>
 </ul>
 </div>
 
-<div class="card small" id="footer">
-<p class="small">Документация Astra IDE — полностью встроена, но вы можете сохранить её как отдельный HTML-файл для локального просмотра.</p>
-</div>
-
 <nav>
 <div class="card">
 <h3>Навигация</h3>
