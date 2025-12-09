@@ -5,6 +5,7 @@ from PIL import Image, ImageTk
 from tkhtmlview import HTMLLabel
 import json
 import subprocess
+import webbrowser
 
 # -------------------- Astra Interpreter --------------------
 class Astra:
@@ -174,11 +175,9 @@ class Astra:
         elif cmd == "ADD":
             reg, val = [x.strip() for x in args.split(",",1)]
             self.variables[reg] = self.variables.get(reg,0)+int(self.variables.get(val,val))
-
         elif cmd == "SUB":
             reg, val = [x.strip() for x in args.split(",",1)]
             self.variables[reg] = self.variables.get(reg,0)-int(self.variables.get(val,val))
-
         elif cmd == "MOV":
             reg, val = [x.strip() for x in args.split(",",1)]
             if val in self.variables:
@@ -188,6 +187,14 @@ class Astra:
                     self.variables[reg] = int(val)
                 except:
                     self.variables[reg] = val
+        elif cmd == "OPEN":
+            filename = args.strip().strip('"')
+            try:
+                with open(filename, "r", encoding="utf-8") as f:
+                    content = f.read()
+                return content
+            except Exception as e:
+                raise Exception(f"OPEN error: {e}")
 
         # ---------------- Вывод ----------------
         elif cmd == "PRINT":
@@ -307,34 +314,81 @@ class Astra:
                         break
                     elif str(e) == "continue":
                         continue
-                # небольшая пауза, чтобы не перегружать GUI
                 time.sleep(0.01)
             return i-1
         elif cmd == "FOR":
-            parts = args.split("IN")
-            var_name = parts[0].strip()
-            iterable_raw = parts[1].strip()
-            if iterable_raw in self.variables:
-                iterable = self.variables[iterable_raw].split(",")
-            else:
-                iterable = [x.strip() for x in iterable_raw.split(",")]
-            i=index+1
-            block=[]
-            depth=1
-            while i<len(program) and depth>0:
-                l=program[i].strip()
-                if l.upper().startswith("FOR"): depth+=1
-                elif l=="}": depth-=1
-                if depth>0: block.append(program[i])
-                i+=1
-            for val in iterable:
-                self.variables[var_name]=val
+            line = args.strip()
+            if "=" in line and "TO" in line.upper():
                 try:
-                    self.run_program(block)
-                except StopIteration as e:
-                    if str(e)=="break": break
-                    elif str(e)=="continue": continue
-            return i-1
+                    var_part, range_part = line.split("=", 1)
+                    var_name = var_part.strip()
+                    range_part = range_part.replace("to", "TO").strip()
+                    start_str, end_str = range_part.split("TO", 1)
+                    try:
+                        start = int(start_str.strip())
+                    except:
+                        start = int(self.variables.get(start_str.strip(), 0))
+                    try:
+                        end = int(end_str.strip())
+                    except:
+                        end = int(self.variables.get(end_str.strip(), 0))
+                except Exception as e:
+                    self.error(f"Ошибка в FOR: {e}")
+                    return index
+                i2 = index + 1
+                block = []
+                depth = 1
+                while i2 < len(program) and depth > 0:
+                    line2 = program[i2].strip()
+                    if line2.upper().startswith("FOR"): depth += 1
+                    elif line2 == "}": depth -= 1
+                    if depth > 0: block.append(program[i2])
+                    i2 += 1
+                for cur in range(start, end + 1):
+                    self.variables[var_name] = cur
+                    try:
+                        self.run_program(block)
+                    except StopIteration as e:
+                        if str(e) == "break":
+                            break
+                        elif str(e) == "continue":
+                            continue
+
+                return i2 - 1
+            if "IN" in line:
+                try:
+                    var_name, iterable_raw = line.split("IN", 1)
+                    var_name = var_name.strip()
+                    iterable_raw = iterable_raw.strip()
+                    if iterable_raw in self.variables:
+                        iterable_str = self.variables[iterable_raw]
+                        iterable = [x.strip() for x in iterable_str.split(",")]
+                    else:
+                        iterable = [x.strip() for x in iterable_raw.split(",")]
+                except Exception as e:
+                    self.error(f"Ошибка в FOR IN: {e}")
+                    return index
+                i2 = index + 1
+                block = []
+                depth = 1
+                while i2 < len(program) and depth > 0:
+                    line2 = program[i2].strip()
+                    if line2.upper().startswith("FOR"): depth += 1
+                    elif line2 == "}": depth -= 1
+                    if depth > 0: block.append(program[i2])
+                    i2 += 1
+                for val in iterable:
+                    self.variables[var_name] = val
+                    try:
+                        self.run_program(block)
+                    except StopIteration as e:
+                        if str(e) == "break":
+                            break
+                        elif str(e) == "continue":
+                            continue
+                return i2 - 1
+            self.error("Неверный синтаксис FOR")
+            return index
 
         # ---------------- BREAK/CONTINUE ----------------
         elif cmd=="BREAK":
@@ -363,34 +417,99 @@ class Astra:
                 self.debug("Библиотека загружена: " + lib_name)
             except Exception as e:
                 self.debug(f"Ошибка подключения {lib_name}: {e}")
-        elif cmd=="TRY":
-            i=index+1
-            try_block=[]
-            except_block=[]
-            depth=1
-            in_except=False
-            while i<len(program) and depth>0:
-                l = program[i].strip()
-                if l.upper().startswith("TRY"): depth+=1
-                elif l.upper()=="EXCEPT" and depth==1:
-                    in_except=True
-                    i+=1
+        elif cmd == "TRY":
+            i = index + 1
+            try_block = []
+            except_block = []
+            depth = 1
+            in_except = False
+            except_var = None
+            while i < len(program) and depth > 0:
+                line_raw = program[i]
+                line = program[i].strip()
+
+                if line.upper().startswith("TRY"):
+                    depth += 1
+                elif line.upper().startswith("EXCEPT") and depth == 1:
+                    in_except = True
+
+                    parts = line.split()
+                    if len(parts) == 3 and parts[1].upper() == "AS":
+                        except_var = parts[2]
+
+                    i += 1
                     continue
-                elif l=="}": depth-=1
-                if depth>0:
-                    if in_except: except_block.append(program[i])
-                    else: try_block.append(program[i])
-                i+=1
+                    if prev_line.strip().startswith("}") or current_line.strip().startswith("}"):
+                        self.depth = max(0, self.depth - 1)
+                    if depth == 0:
+                        break
+
+                if in_except:
+                    except_block.append(line_raw)
+                else:
+                    try_block.append(line_raw)
+
+                i += 1
+
             try:
                 self.run_program(try_block)
             except Exception as e:
-                if except_block:
-                    self.run_program(except_block)
-                else:
-                    self.debug_output.insert(tk.END,f"Ошибка: {e}\n")
-                    self.debug_output.see(tk.END)
-            return i
+                if except_var:
+                    self.variables[except_var] = str(e)
+                self.run_program(except_block)
 
+            return i
+        elif cmd == "WITH":
+            if "=" not in args:
+                raise Exception("WITH: нет '='")
+
+            var, val_expr = args.split("=", 1)
+            var = var.strip()
+            val_expr = val_expr.strip()
+
+            # выполнить правую часть
+            parts_val = val_expr.split(maxsplit=1)
+            sub_cmd = parts_val[0].upper()
+
+            if sub_cmd == "OPEN":
+                val = self.execute_line(val_expr, program, index)
+            else:
+                if val_expr in self.variables:
+                    val = self.variables[val_expr]
+                else:
+                    try:
+                        val = int(val_expr)
+                    except:
+                        val = val_expr.strip('"')
+
+            old_value = self.variables.get(var)
+            self.variables[var] = val
+
+            i = index + 1
+            block = []
+            depth = 1
+
+            while i < len(program):
+                line = program[i].strip()
+
+                if line.upper().startswith("WITH"):
+                    depth += 1
+                    if prev_line.strip().startswith("}") or current_line.strip().startswith("}"):
+                        self.depth = max(0, self.depth - 1)
+                    if depth == 0:
+                        break
+
+                block.append(program[i])
+                i += 1
+
+            self.run_program(block)
+
+            if old_value is None:
+                del self.variables[var]
+            else:
+                self.variables[var] = old_value
+
+            return i
         # ---------------- Закрытие блока ----------------
         elif cmd=="}":
             return index+1
@@ -400,8 +519,8 @@ class Astra:
 # -------------------- Astra IDE --------------------
 class AstraIDE:
     KEYWORDS = ["TEXTVAR","UPDATEVAR","PRINT","ADD","SUB","MOV","WAIT",
-                "FUNCTION","END FUNC","IF","ELSE","ENDIF","WHILE","ENDWHILE","THEN","CATCH","TRY",
-                "RETURN","IN","FOR"]
+                "FUNCTION","IF","ELSE","WHILE","THEN","CATCH","TRY",
+                "RETURN","IN","FOR","ELIF","BREAK","CONTINUE","USE","EXCEPT","WITH"]
     HINTS = {
         "TEXTVAR": "TEXTVAR имя,значение — Создание переменной",
         "RETURN": "RETURN имя — Возвратить",
@@ -419,7 +538,15 @@ class AstraIDE:
         "IF": "IF var==значение — Условие",
         "ELSE": "ELSE — Иначе",
         "WHILE": "WHILE var!=значение — Цикл",
-        "FUNCTION": "FUNCTION имя — Определение функции"
+        "FUNCTION": "FUNCTION имя — Определение функции",
+        "}": "} - Закончить",
+        "ELIF": "ELIF - Дополнительное условие",
+        "BREAK": "BREAK - Досрочно завершить цикл",
+        "CONTINUE": "CONTINUE - Пропускает оставшуюся часть текущей итерации",
+        "USE": "USE - Использовать библиотеку например: USE AstraWindow (встроеная  библиотека).",
+        "EXCEPT": "EXCEPT - Кроме",
+        "AS": "AS - Как",
+        "WITH": "WITH - С"
     }
     
     def open_build_settings(self):
@@ -513,6 +640,7 @@ class AstraIDE:
         app_name = settings["name"]
         app_version = settings["version"]
 
+        # 1 — создаём exe через PyInstaller
         exe_cmd = [
             "pyinstaller",
             "--windowed",
@@ -521,7 +649,7 @@ class AstraIDE:
             self.current_file if self.current_file else "main.py"
         ]
         subprocess.run(exe_cmd)
-
+        
         cfg = f"""
 [Application]
 name={app_name}
@@ -539,7 +667,6 @@ files=dist/{app_name}
 
         with open("installer.cfg", "w", encoding="utf-8") as f:
             f.write(cfg)
-
         msi_cmd = ["pynsist", "installer.cfg"]
         subprocess.run(msi_cmd)
 
@@ -571,6 +698,48 @@ files=dist/{app_name}
 
         self.editor = scrolledtext.ScrolledText(editor_frame, wrap=tk.NONE, undo=True)
         self.editor.pack(expand=True, fill=tk.BOTH)
+        self.editor.tag_config("error", background="#FFCCCC")      # красная
+        self.editor.tag_config("warning", background="#FFF4CC")    # жёлтая
+        self.error_count = 0
+        self.warning_count = 0
+
+        def highlight_issues(self, errors=None, warnings=None):
+            """
+            errors = list of line numbers with errors
+            warnings = list of line numbers with warnings
+            """
+            self.editor.tag_remove("error", "1.0", tk.END)
+            self.editor.tag_remove("warning", "1.0", tk.END)
+            if errors:
+                for line in errors:
+                    start = f"{line}.0"
+                    end = f"{line}.0 lineend"
+                    self.editor.tag_add("error", start, end)
+            if warnings:
+                for line in warnings:
+                    start = f"{line}.0"
+                    end = f"{line}.0 lineend"
+                    self.editor.tag_add("warning", start, end)
+            total_lines = int(self.editor.index('end-1c').split('.')[0])
+            self.status_label.config(
+                text=f"Строк: {total_lines} | Ошибки: {len(errors) if errors else 0} | Предупреждения: {len(warnings) if warnings else 0}"
+            )
+        def run_program_with_highlighting(self):
+            code_lines = self.editor.get("1.0", tk.END).splitlines()
+            errors = []
+            warnings = []
+
+            for i, line in enumerate(code_lines, start=1):
+                try:
+                    if "PRINT" in line and "UNKNOWN" in line:
+                        warnings.append(i)
+                    if "ERROR" in line:
+                        raise Exception("Test error")
+                except Exception as e:
+                    errors.append(i)
+            self.highlight_issues(errors, warnings)
+        self.status_label = ttk.Label(self.root, text="Строк: 0 | Ошибки: 0 | Предупреждения: 0(в разработке)", anchor="w")# не работает пока что
+        self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
         self.editor.bind("<KeyRelease>", self.highlight_syntax)
         self.editor.bind("<ButtonRelease>", self.on_cursor_move)
 
@@ -586,7 +755,7 @@ files=dist/{app_name}
         button_frame.pack(fill=tk.X)
 
         self.icons = {}
-        def load_local_icon(path,size=(40,40)):
+        def load_local_icon(path,size=(25,25)):
             try:
                 img = Image.open(path).convert("RGBA")
                 img = img.resize(size, Image.Resampling.LANCZOS)
@@ -704,6 +873,23 @@ files=dist/{app_name}
                     self.tree.insert(parent, "end", text=item, values=(abs_path,))
         except Exception as e:
             print(f"Ошибка при загрузке файлов: {e}")
+            
+    def run_program_with_highlighting(self):
+        code_lines = self.editor.get("1.0", tk.END).splitlines()
+        errors = []
+        warnings = []
+
+        for i, line in enumerate(code_lines, start=1):
+            try:
+                # Тестовое выполнение, можно интегрировать с Astra
+                if "PRINT" in line and "UNKNOWN" in line:
+                    warnings.append(i)
+                if "ERROR" in line:
+                    raise Exception("Test error")
+            except Exception as e:
+                errors.append(i)
+        
+        self.highlight_issues(errors, warnings)
 
     def create_file(self):
         filename = simpledialog.askstring("Создать файл", "Введите имя файла:")
@@ -773,237 +959,11 @@ files=dist/{app_name}
         self.debug_output.insert(tk.END, "Программа остановлена пользователем.\n")
         self.debug_output.see(tk.END)
 
-    # ---------------- HTML-гайд ----------------
     def create_guide_window(self):
-        guide_win = tk.Toplevel(self.root)
-        guide_win.title("Гайд по Astra IDE")
-        guide_win.geometry("1000x700")
-
-        html_content = """
-        <!doctype html>
-        <html lang="ru">
-        <head>
-          <meta charset="utf-8"/>
-          <meta name="viewport" content="width=device-width,initial-scale=1"/>
-          <title>Astra IDE — Гайд</title>
-          <style>
-            body{font-family:Segoe UI, Roboto, Arial; margin:18px; background:linear-gradient(135deg,#0f172a 0%,#0b1220 100%); color:#e6eef8}
-            .card{background:rgba(255,255,255,0.04); border-radius:12px; padding:18px; margin-bottom:14px; box-shadow:0 6px 18px rgba(2,6,23,0.6); backdrop-filter: blur(6px);}
-            h1,h2,h3{color:#fff; margin:8px 0}
-            pre{background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; overflow:auto; color:#dff0ff}
-            code{font-family:Consolas,monospace; color:#a7f0ff}
-            ul{margin-top:6px}
-            .small{font-size:13px; color:#cfe9ff}
-            nav{position:fixed; right:18px; top:80px; width:220px;}
-            nav .card{position:sticky; top:10px; max-height:80vh; overflow:auto}
-            a{color:#93d6ff; text-decoration:none}
-            .example{border-left:4px solid rgba(147,214,255,0.15); padding-left:10px}
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>🪐 Astra IDE — Полный Гайд</h1>
-            <p class="small">Документация по Astra, IDE, AstraWindow, сборке в .exe/.msi и советам. Встроена прямо в IDE — можно быстро открыть и читать.</p>
-          </div>
-
-          <div class="card" id="intro">
-            <h2>Что такое Astra IDE</h2>
-            <p>Astra IDE — среда разработки для языка <strong>Astra</strong>. Поддерживает редактор .ast, интерпретатор, GUI-библиотеку AstraWindow, сборку .exe и .msi, отладчик (Debug Output).</p>
-          </div>
-
-          <div class="card" id="structure">
-            <h2>Структура проекта</h2>
-            <pre><code>project/
-      ├─ main.ast
-      ├─ libs/
-      │   └─ AstraWindow.py
-      ├─ icons/
-      ├─ examples/
-      └─ build_settings.json</code></pre>
-            <p class="small">.ast — код на языке Astra. libs — дополнительные библиотеки, например AstraWindow.</p>
-          </div>
-
-          <div class="card" id="editor">
-            <h2>Интерфейс IDE</h2>
-            <ul>
-              <li>Редактор кода с подсветкой</li>
-              <li>Проводник проекта (папки/файлы)</li>
-              <li>Кнопки: Run / Stop / Save / Guide / Build</li>
-              <li>Debug Output — лог выполнения</li>
-            </ul>
-          </div>
-
-          <div class="card" id="files">
-            <h2>Работа с файлами .ast</h2>
-            <ul>
-              <li>Создать файл — кнопка <em>Создать файл</em></li>
-              <li>Открыть файл — двойной клик в проводнике</li>
-              <li>Сохранить — кнопка <em>Save</em> или Ctrl+S</li>
-            </ul>
-          </div>
-
-          <div class="card" id="syntax">
-            <h2>Язык Astra — Полный синтаксис</h2>
-            <p class="small">Ниже — все команды и примеры их использования.</p>
-
-            <h3>Переменные</h3>
-            <pre><code>TEXTVAR name, value
-    UPDATEVAR name, valueOrVar</code></pre>
-
-            <h3>Математика</h3>
-            <pre><code>ADD var, number
-    SUB var, number
-    MOV var, numberOrVar</code></pre>
-
-            <h3>Вывод</h3>
-            <pre><code>PRINT expression</code></pre>
-
-            <h3>Условия</h3>
-            <pre><code>IF a == b THEN
-      ...
-    }
-    ELIF a == c THEN
-      ...
-    }
-    ELSE
-      ...
-    }</code></pre>
-
-            <h3>Циклы</h3>
-            <pre><code>WHILE a != b
-      ...
-    }
-    FOR item IN 1,2,3
-      ...
-    }</code></pre>
-
-            <h3>Функции</h3>
-            <pre><code>FUNCTION name
-      ...
-    }
-    name  ; вызов функции</code></pre>
-
-            <h3>Исключения</h3>
-            <pre><code>TRY
-      ...
-    EXCEPT
-      ...
-    }</code></pre>
-
-            <h3>Библиотеки</h3>
-            <pre><code>USE AstraWindow</code></pre>
-          </div>
-
-          <div class="card" id="examples">
-            <h2>Примеры</h2>
-
-            <h3>Простой Clicker</h3>
-            <pre class="example"><code>USE AstraWindow
-    TEXTVAR score,0
-    FUNCTION onClick
-      ADD score,1
-      PRINT score
-    }
-    WINDOW main,320,200,"Clicker"
-    TEXT main,10,10,"Score:"
-    TEXT main,70,10,score
-    BUTTON main,10,40,"Click",onClick</code></pre>
-
-            <h3>Таймер</h3>
-            <pre class="example"><code>TEXTVAR timer,10
-    FUNCTION tick
-      PRINT timer
-      SUB timer,1
-    }
-    WHILE timer!=0
-      tick
-      WAIT 1
-    }</code></pre>
-
-            <h3>Функция с возвратом</h3>
-            <pre class="example"><code>FUNCTION getFive
-      RETURN 5
-    }
-    PRINT getFive</code></pre>
-          </div>
-
-          <div class="card" id="astrawindow">
-            <h2>AstraWindow — GUI библиотека</h2>
-            <p class="small">После <code>USE AstraWindow</code> доступны команды: <strong>WINDOW, TEXT, BUTTON, SQUARE</strong>. Кнопки вызывают функции по имени (onClick → FUNCTION onClick ... }).</p>
-
-            <h3>Команды AstraWindow</h3>
-            <pre><code>WINDOW name,width,height,"Title"
-    TEXT window,x,y,"text"
-    BUTTON window,x,y,"label",functionName
-    SQUARE window,x,y,size,"color"</code></pre>
-
-            <p class="small">Важно: TEXT в текущей простой реализации создаёт Label — чтобы динамически обновлять текст, используйте API библиотеки или добавьте команду UPDATE_TEXT, которая вызывает <code>AstraWindow.update_text(varName, value)</code>.</p>
-          </div>
-
-          <div class="card" id="build">
-            <h2>Сборка: .exe и .msi</h2>
-            <h3>.exe (PyInstaller)</h3>
-            <pre><code>pyinstaller --onefile --windowed --add-data "icons;icons" astra_ide.py</code></pre>
-            <p class="small">Добавляйте папки и файлы через <code>--add-data</code>. В IDE это делается через окно настроек сборки.</p>
-
-            <h3>.msi (pynsist / wix / nsis)</h3>
-            <p class="small">IDE использует pynsist (или WiX) для создания MSI. Нужно настроить entry_point и включить папку dist в конфиг.</p>
-          </div>
-
-          <div class="card" id="build-settings">
-            <h2>Окно настроек сборки</h2>
-            <p>Через меню <strong>Настройки сборки</strong> можно настроить:</p>
-            <ul>
-              <li>Имя проекта</li>
-              <li>Версию</li>
-              <li>Файлы/папки для включения (icons, examples и т.д.)</li>
-              <li>Список пакетов</li>
-            </ul>
-            <p class="small">Настройки сохраняются в <code>build_settings.json</code>.</p>
-          </div>
-
-          <div class="card" id="tips">
-            <h2>Tips & Tricks</h2>
-            <ul>
-              <li>Для отладки используйте <code>PRINT</code> часто — всё выводится в Debug Output</li>
-              <li>Закрывайте блоки фигурной скобкой <code>}</code></li>
-              <li>Имена функций и переменных чувствительны к регистру в твоём интерпретаторе — проверяй совпадения</li>
-              <li>При проблемах с GUI проверь, что <code>USE AstraWindow</code> выполнен ДО команд WINDOW/TEXT/BUTTON</li>
-            </ul>
-          </div>
-
-          <div class="card small" id="footer">
-            <p>Документация генерирована автоматически и встроена в IDE. Если хочешь — могу превратить это в отдельный HTML-файл <code>docs/guide.html</code> и сделать локальный просмотр через браузер.</p>
-          </div>
-
-          <nav>
-            <div class="card">
-              <h3>Навигация</h3>
-              <ul>
-                <li><a href="#intro">Intro</a></li>
-                <li><a href="#structure">Структура</a></li>
-                <li><a href="#syntax">Синтаксис</a></li>
-                <li><a href="#examples">Примеры</a></li>
-                <li><a href="#astrawindow">AstraWindow</a></li>
-                <li><a href="#build">Сборка</a></li>
-                <li><a href="#build-settings">Настройки сборки</a></li>
-                <li><a href="#tips">Советы</a></li>
-              </ul>
-            </div>
-          </nav>
-        </body>
-        </html>
-        """
-
-        try:
-            html_label = HTMLLabel(guide_win, html=html_content)
-            html_label.pack(expand=True, fill="both")
-        except Exception as e:
-            txt = scrolledtext.ScrolledText(guide_win)
-            txt.insert(tk.END, html_content)
-            txt.configure(state=tk.DISABLED)
-            txt.pack(expand=True, fill="both")
-
+        script_dir = os.path.dirname(__file__)
+        file_path = os.path.join(script_dir, 'index.html')
+        url = 'file:///' + os.path.abspath(file_path)
+        webbrowser.open(url)
     def run(self):
         self.root.mainloop()
 
@@ -1011,5 +971,4 @@ files=dist/{app_name}
 if __name__=="__main__":
     ide = AstraIDE()
     ide.run()
-
 
