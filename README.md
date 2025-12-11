@@ -25,11 +25,6 @@
 </ul>
 </div>
 
-<a class="button-download" href="https://example.com/AstraIDE.zip" download>
-    Скачать Astra IDE
-</a>
-</div>
-
 <div class="card" id="structure">
 <h2>Структура проекта</h2>
 <pre><code>project/
